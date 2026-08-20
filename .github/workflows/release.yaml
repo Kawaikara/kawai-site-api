@@ -1,0 +1,53 @@
+name: Release Site API
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Validate tag and package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "v${package_version}" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match v${package_version}."
+            exit 1
+          fi
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Pack public artifact
+        run: mkdir -p release && npm pack --pack-destination release
+      - name: Verify isolated consumer install
+        shell: bash
+        run: |
+          set -euo pipefail
+          consumer="$(mktemp -d)"
+          tarball="$(find release -maxdepth 1 -name '*.tgz' -print -quit)"
+          npm install --ignore-scripts --prefix "$consumer" "$tarball"
+          node -e "require('$consumer/node_modules/@kawaikara/site-api')"
+      - name: Publish immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -p "require('./package.json').version")"
+          mapfile -d '' assets < <(find release -maxdepth 1 -name '*.tgz' -print0)
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+            --verify-tag \
+            --title "Kawaikara Site API ${package_version}" \
+            --notes "Immutable Site API ${package_version} package for external .kawai Bundle projects."
