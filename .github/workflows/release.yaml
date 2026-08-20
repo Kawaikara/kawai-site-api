@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
           consumer="$(mktemp -d)"
-          tarball="$(find release -maxdepth 1 -name '*.tgz' -print -quit)"
+          tarball="$(realpath "$(find release -maxdepth 1 -name '*.tgz' -print -quit)")"
           npm install --ignore-scripts --prefix "$consumer" "$tarball"
           node -e "require('$consumer/node_modules/@kawaikara/site-api')"
       - name: Publish immutable GitHub Release
